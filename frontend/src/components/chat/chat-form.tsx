@@ -218,8 +218,6 @@ export function ChatForm({ isGenerating, isCompacting = false, onSend, onStop, c
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: providerModels, activeProvider } = useProviderModels();
   const noModelsAvailable = !activeProvider || providerModels.length === 0;
-  const selectedModel = useSettingsStore((s) => s.selectedModel);
-  const selectedProviderId = useSettingsStore((s) => s.selectedProviderId);
 
   const sendingRef = useRef(false);
   const tauriDropHandledAtRef = useRef(0);
@@ -545,15 +543,6 @@ export function ChatForm({ isGenerating, isCompacting = false, onSend, onStop, c
     });
   }, [fixRequest, clearFixRequest, ref, resize]);
 
-  const selectedModelInfo = useMemo(
-    () =>
-      providerModels.find(
-        (model) =>
-          model.id === selectedModel &&
-          (!selectedProviderId || model.provider_id === selectedProviderId),
-      ) ?? providerModels.find((model) => model.id === selectedModel),
-    [providerModels, selectedModel, selectedProviderId],
-  );
   const compactingStatusText = useMemo(() => {
     if (!isCompacting) return null;
     if (!compactingLabel) return t("contextCompactingNow");

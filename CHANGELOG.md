@@ -6,6 +6,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), and this project
 
 ## [Unreleased]
 
+## [1.1.11] - 2026-05-21
+
+### Added
+
+- **providers (custom endpoint):** Custom Endpoint settings now mirror opencode's professional shape. Each endpoint has a stable Provider ID slug, a Display name, a manual Models list (model-id + label pairs), and custom request Headers. The slug becomes the provider's stable identity; reserved names (BYOK catalog, Ollama, Rapid-MLX, etc.) are rejected before save.
+- **providers (custom endpoint):** Each saved endpoint can now be edited in place. Existing header values are masked in transit, and the edit form sends a JSON Merge Patch delta so changing one field never touches the others. Soft-deleted header rows are reversible with an Undo affordance before save.
+- **rapid-mlx (uninstall):** New "Uninstall" button on the Rapid-MLX panel stops the running process, deletes downloaded MLX models from the HuggingFace cache, clears the saved base URL and last-used model, and surfaces the brew/pip commands needed to fully remove the user-managed binary.
+- **tests (custom endpoint + rapid-mlx):** Added 91 backend unit tests covering slug validation, headers JSON Merge Patch delta semantics, single-provider registry refresh, and uninstall freed-bytes accounting against a real HuggingFace cache layout.
+
+### Changed
+
+- **providers (custom endpoint):** Legacy custom endpoints (created before this release) auto-migrate on read — the slug is derived from the existing ID and empty models / headers fields are filled in transparently. No data loss; no manual step.
+- **providers (registry):** Custom endpoint create / update / heal-on-read now refresh only the affected provider instead of doing a full cross-provider `/v1/models` sweep. Editing one custom endpoint no longer re-polls every other provider.
+- **providers (custom endpoint):** PATCH semantics now compare effective values to what's stored, so saving the form with only Display name changed no longer rebuilds the provider or re-lists models. Same-value upserts on api_key, base_url, models, or headers are likewise free.
+- **rapid-mlx (panel):** Stop and Remove buttons hide when there's nothing to act on (rather than rendering as greyed-out and looking broken). The idle status indicator is now a neutral dot instead of a warning-orange dot — a binary that's installed but not running is the expected state, not a warning.
+- **chat (header):** Removed the floating SESSION USAGE card from the chat header and the pricing pill that sat to the left of the submit button. Token usage remains visible in the dedicated Usage tab.
+
+### Fixed
+
+- **providers (custom endpoint):** Toggling a custom endpoint disable→enable now correctly re-registers the provider. The previous flow would silently leave the registry out of sync with the persisted state until restart.
+- **providers (custom endpoint):** `GET /config/providers` now self-heals stale unregistrations on read — if a custom endpoint is persisted as enabled but the registry has no provider for it, the registry rebuilds inline before responding so model counts and status reflect reality.
+- **rapid-mlx (uninstall):** `freed_bytes` reported by the uninstall dialog now reflects actual disk usage. The previous calculation followed HuggingFace cache symlinks and effectively double-counted every blob through its snapshot pointer.
+- **providers (custom endpoint):** The PATCH endpoint no longer rebuilds the provider on an empty `headers: {}` delta. Earlier the mere presence of the field flipped `needs_rebuild`, triggering a wasted `/v1/models` call on auto-discover endpoints.
+- **providers (custom endpoint):** Header value length is now capped at 4 KiB during validation, and forbidden hop-by-hop names (`Host`, `Content-Length`, `Transfer-Encoding`) remain rejected on both POST and PATCH deltas, including delete entries.
+- **frontend (edit form):** Duplicate header names are caught client-side before submit, so a new row that collides with another new row or a still-present existing header now shows an inline error instead of silently last-write-winsing.
+
+### Validation
+
+- **release:** Verified with frontend `tsc --noEmit` + ESLint (zero errors, zero warnings), backend `pytest` (898 passed, 21 skipped due to external prereqs), manual UI checks against Custom Endpoint create + edit + delete flows, Rapid-MLX uninstall dialog, and provider tab switching across BYOK / ChatGPT Subscription / Ollama / Rapid-MLX / Custom.
+
 ## [1.1.10] - 2026-05-12
 
 ### Changed
