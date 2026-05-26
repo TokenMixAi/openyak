@@ -6,9 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/), and this project
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-26
+
+### Added
+
+- **chat (background sessions):** Chats now keep streaming when you navigate away. The single-active assumption in the frontend is gone — `chat-store` is keyed per session and the SSE registry is a module-level singleton owning one client per session, so opening a new chat while another is mid-stream is a pure view swap, not an abort. Mirrors the Codex / Claude Code Desktop multi-session experience. (#121)
+- **chat (boot hydration):** Closing the app while a session is still streaming is no longer destructive. On the next launch the frontend calls `GET /api/chat/active`, re-attaches every still-running stream, and replays missed events via the existing `last-event-id` machinery, so live tokens continue rendering with no manual intervention. (#121)
+- **sidebar (live status):** Each session row in the sidebar shows a small spinning indicator while that session has an in-flight generation. Driven directly off the keyed store — lights up the instant the SSE stream produces its first event, regardless of which chat the user is currently viewing. (#124)
+- **notifications (background finish):** When a background generation finishes (or errors out), OpenYak fires a native OS notification — using the standard web Notification API so the same path covers Tauri WKWebView / WebView2 / WebKitGTK and the remote-mobile case. Suppressed when the user is already viewing the finished session and the window is visible. Clicking the notification soft-navigates to the chat via Next.js's router; no full reload. Permission is requested lazily on the first background completion so foreground-only users never see a prompt. (#124)
+- **task batches (multi-agent):** New batch composer lets a chat fan out multiple sub-tasks at once and stream them in parallel or sequentially. Each task surfaces with its own status in the workspace progress panel. (#117, #118)
+
 ### Changed
 
 - **license:** Changed from MIT to Apache-2.0. Updated `LICENSE`, all `package.json` files, `backend/pyproject.toml`, `desktop-tauri/src-tauri/Cargo.toml`, and README badges. Apache-2.0 adds an explicit patent grant and a `NOTICE` mechanism for downstream attribution.
+- **session-list:** Archive and delete actions now also stop any in-flight background stream for the affected session and remove its bucket from the registry, so chats explicitly removed from view no longer keep an SSE client and idle-check timer alive in memory.
+
+### Fixed
+
+- **providers (rapid-mlx):** The "default model" indicator now reads the current served model from the Rapid-MLX process on panel mount, so the row no longer flashes "no model" when a model is actually running. (#119)
+- **stream registry (cleanup):** The global `visibilitychange` listener is now properly removed on registry disposal, preventing a stale handler from accumulating across hot-reload cycles in dev.
+- **stream registry (memory):** Per-session step-finish dedup sets are freed when generation completes, so the outer dedup map no longer grows unbounded over the app's lifetime.
+
+### Validation
+
+- **release:** Verified with `next build` (production type-check + ESLint), backend `pytest`, and end-to-end smoke tests in both a Chrome browser and a real Tauri desktop build against a Rapid-MLX backend (qwen3.5-4b). The four key scenarios all pass: two-session concurrent streaming with no token loss on either, sidebar spinner persisting while viewing another chat, app-restart hydration re-attaching live SSE, and background-finish notification firing only when the session is not the focused one.
 
 ## [1.1.11] - 2026-05-21
 
