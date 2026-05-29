@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, Loader2, MessageCircle, Pin, PinOff } from "lucide-react";
+import { Archive, EllipsisVertical, Loader2, MessageCircle, Pin, PinOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { API, queryKeys } from "@/lib/constants";
@@ -20,6 +20,13 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { SessionResponse } from "@/types/session";
 
 interface SessionItemProps {
@@ -59,10 +66,12 @@ export const SessionItem = memo(function SessionItem({
   const { prefetch, cancel } = useDebouncedPrefetch(150);
   const [editValue, setEditValue] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [scrollVars, setScrollVars] = useState<React.CSSProperties | undefined>();
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rawTitle = session.title || t('newConversation');
   // Clean up ugly channel titles: "Channel: whatsapp:+1234567890" → "+1234567890"
@@ -140,6 +149,34 @@ export const SessionItem = memo(function SessionItem({
     [handleSubmitRename, handleCancelRename],
   );
 
+  // Defer single-click navigation briefly so a double-click (which opens
+  // rename) doesn't also navigate into the session first. A double-click
+  // cancels the pending navigation. Keyboard Enter stays immediate.
+  const handleRowClick = useCallback(() => {
+    if (isEditing) return;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      router.push(getChatRoute(session.id));
+    }, 250);
+  }, [isEditing, router, session.id]);
+
+  const handleRowDoubleClick = useCallback(() => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    if (!isEditing) onEditStart?.(session.id);
+  }, [isEditing, onEditStart, session.id]);
+
+  // Cancel a pending navigation if the row unmounts mid-debounce.
+  useEffect(
+    () => () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    },
+    [],
+  );
+
   const handleOpenDirectory = useCallback(async () => {
     if (!hasDirectory || !session.directory) return;
     try {
@@ -160,13 +197,20 @@ export const SessionItem = memo(function SessionItem({
     }
   }, [t]);
 
+  // Shared action list, rendered into both the right-click ContextMenu and the
+  // hover ••• DropdownMenu. Typed structurally so either menu family's Item /
+  // Separator components satisfy it.
   const MenuItems = useCallback(
     ({
       Item,
       Separator,
     }: {
-      Item: typeof ContextMenuItem;
-      Separator: typeof ContextMenuSeparator;
+      Item: React.ComponentType<{
+        onSelect?: (event: Event) => void;
+        className?: string;
+        children?: React.ReactNode;
+      }>;
+      Separator: React.ComponentType;
     }) => (
       <>
         <Item onSelect={() => onTogglePin?.(session.id, !session.is_pinned)}>
@@ -240,7 +284,8 @@ export const SessionItem = memo(function SessionItem({
           role="option"
           aria-selected={isActive}
           tabIndex={isFocused ? 0 : -1}
-          onClick={() => !isEditing && router.push(getChatRoute(session.id))}
+          onClick={handleRowClick}
+          onDoubleClick={handleRowDoubleClick}
           onKeyDown={(e) => !isEditing && e.key === "Enter" && router.push(getChatRoute(session.id))}
           onMouseEnter={() => {
             prefetch(() => {
@@ -265,7 +310,7 @@ export const SessionItem = memo(function SessionItem({
             isActive
               ? "bg-[var(--sidebar-active)] text-[var(--text-primary)] shadow-[var(--sidebar-active-shadow)]"
               : "text-[var(--text-primary)] hover:bg-[var(--sidebar-hover)] focus-within:bg-[var(--sidebar-active)] focus-within:shadow-[var(--sidebar-active-shadow)] data-[state=open]:bg-[var(--sidebar-active)] data-[state=open]:shadow-[var(--sidebar-active-shadow)]",
-            menuOpen && "bg-[var(--sidebar-active)] shadow-[var(--sidebar-active-shadow)]",
+            (menuOpen || dropdownOpen) && "bg-[var(--sidebar-active)] shadow-[var(--sidebar-active-shadow)]",
             isEditing && "ring-1 ring-[var(--brand-primary)]",
           )}
         >
@@ -289,7 +334,7 @@ export const SessionItem = memo(function SessionItem({
           <div
             className={cn(
               "min-w-0 flex-1",
-              !isEditing && "pr-10",
+              !isEditing && "pr-16",
             )}
           >
             {isEditing ? (
@@ -337,8 +382,8 @@ export const SessionItem = memo(function SessionItem({
             )}
           </div>
 
-          {/* Right-side slot: relative time. Item actions live in the context menu. */}
-          {!isEditing && !menuOpen && (
+          {/* Right-side slot: relative time. Item actions live in the menus. */}
+          {!isEditing && !menuOpen && !dropdownOpen && (
             <span
               aria-hidden
               className={cn(
@@ -358,13 +403,37 @@ export const SessionItem = memo(function SessionItem({
                 onArchive?.(session.id);
               }}
               className={cn(
-                "absolute right-1.5 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-tertiary)] opacity-0 transition-opacity hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--brand-primary)] focus-visible:opacity-100 group-hover/session:opacity-100",
+                "absolute right-9 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-tertiary)] opacity-0 transition-opacity hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--brand-primary)] focus-visible:opacity-100 group-hover/session:opacity-100",
               )}
               aria-label={t('archiveChat')}
               title={t('archiveChat')}
             >
               <Archive className="h-3.5 w-3.5" />
             </button>
+          )}
+
+          {/* ••• overflow menu — discoverable, click/touch-friendly entry to
+              rename and the rest of the actions (mirrors the right-click menu).
+              Restores the trigger removed in f03f992. */}
+          {!isEditing && (
+            <DropdownMenu onOpenChange={setDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    "absolute right-1.5 top-1/2 z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-tertiary)] opacity-0 transition-opacity hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--brand-primary)] focus-visible:opacity-100 group-hover/session:opacity-100 data-[state=open]:opacity-100",
+                  )}
+                  aria-label={t('moreActions', { defaultValue: 'More actions' })}
+                  title={t('moreActions', { defaultValue: 'More actions' })}
+                >
+                  <EllipsisVertical className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <MenuItems Item={DropdownMenuItem} Separator={DropdownMenuSeparator} />
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </ContextMenuTrigger>
