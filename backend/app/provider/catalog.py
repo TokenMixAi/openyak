@@ -164,6 +164,14 @@ PROVIDER_CATALOG: dict[str, ProviderDef] = {
         kind="openai_compat",
         base_url="https://api.siliconflow.cn/v1",
     ),
+    "tokenmix": ProviderDef(
+        id="tokenmix",
+        name="TokenMix",
+        settings_key="tokenmix_api_key",
+        kind="openai_compat",
+        base_url="https://api.tokenmix.ai/v1",
+    ),
+    # --- Aggregators ---
     "xiaomi": ProviderDef(
         id="xiaomi",
         name="Xiaomi MiMo",
